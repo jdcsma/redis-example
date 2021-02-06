@@ -1,5 +1,6 @@
 package jun.example;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jun.example.domain.PlayerSummary;
 import org.apache.logging.log4j.LogManager;
@@ -7,15 +8,18 @@ import org.apache.logging.log4j.Logger;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @SpringBootTest
-public class Tester {
+public class Tester2 {
 
     private static final Logger logger = LogManager.getLogger();
 
@@ -23,11 +27,15 @@ public class Tester {
     private ObjectMapper objectMapper;
 
     @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     private final Set<Long> players = new HashSet<>();
 
     public String summaryKey(long playerID) {
+        return "summary:" + playerID;
+    }
+
+    public String summaryKey(String playerID) {
         return "summary:" + playerID;
     }
 
@@ -37,7 +45,8 @@ public class Tester {
 
     public void addPlayerSummaries(int maxCount) {
 
-        redisTemplate.opsForValue().set("count:", maxCount);
+        stringRedisTemplate.opsForValue().set(
+                "count:", Integer.toString(maxCount));
 
         List<PlayerSummary> summaryList = Stream.generate(
                 new Supplier<PlayerSummary>() {
@@ -57,8 +66,16 @@ public class Tester {
 
         long st = System.currentTimeMillis();
         summaryList.forEach(
-                (summary) -> redisTemplate.opsForValue().set(
-                        this.summaryKey(summary.getPlayerID()), summary)
+                (summary) -> {
+                    try {
+                        String value = objectMapper
+                                .writeValueAsString(summary);
+                        stringRedisTemplate.opsForValue().set(
+                                this.summaryKey(summary.getPlayerID()), value);
+                    } catch (JsonProcessingException e) {
+                        e.printStackTrace();
+                    }
+                }
         );
         long et = System.currentTimeMillis();
         logger.info("set string elapse:{}. count:{}",
@@ -70,35 +87,19 @@ public class Tester {
         Set<Long> set = new HashSet<>(friends);
         set.remove(playerID);
 
+        String[] ids = new String[set.size()];
+        set.stream().map((id) -> Long.toString(id))
+                .collect(Collectors.toList()).toArray(ids);
+
         long st = System.currentTimeMillis();
-        this.redisTemplate.opsForSet().add(
-                this.friendKey(playerID), set.toArray());
+        this.stringRedisTemplate.opsForSet().add(this.friendKey(playerID), ids);
         long et = System.currentTimeMillis();
         logger.info("add friends elapse:{}", (et - st));
     }
 
-    private static class Elapse {
-
-        private long begin;
-        private long amount;
-
-        public void start() {
-            this.begin = System.currentTimeMillis();
-        }
-
-        public void stop() {
-            this.amount += System.currentTimeMillis() - this.begin;
-        }
-
-        public long getAmount() {
-            return this.amount;
-        }
-    }
-
-    @SuppressWarnings("unchecked")
     public void findFriends(long playerID) {
         long st = System.currentTimeMillis();
-        Set<Object> members = this.redisTemplate.opsForSet()
+        Set<String> members = this.stringRedisTemplate.opsForSet()
                 .members(this.friendKey(playerID));
         long et = System.currentTimeMillis();
         logger.info("player:{} - find friends id elapse:{}.",
@@ -112,18 +113,22 @@ public class Tester {
         final Elapse deserializeElapse = new Elapse();
         members.forEach((friendID) -> {
             getElapse.start();
-            Map<String, Object> map = (Map<String, Object>) redisTemplate
-                    .opsForValue().get(summaryKey((Integer) friendID));
+            String value = stringRedisTemplate.opsForValue()
+                    .get(summaryKey(friendID));
             getElapse.stop();
             deserializeElapse.start();
-            PlayerSummary friend = objectMapper.convertValue(
-                    map, PlayerSummary.class);
+            PlayerSummary friend = null;
+            try {
+                friend = objectMapper.readValue(value, PlayerSummary.class);
+            } catch (JsonProcessingException e) {
+                e.printStackTrace();
+            }
             deserializeElapse.stop();
             assert friend != null;
             friendSummaries.add(friend);
         });
         logger.info("player:{} - find friend summary elapse:{}",
-                playerID, (getElapse.getAmount()  + deserializeElapse.getAmount()));
+                playerID, (getElapse.getAmount() + deserializeElapse.getAmount()));
         logger.info("get elapse:{}", getElapse.getAmount());
         logger.info("deserialize elapse:{}", deserializeElapse.getAmount());
         logger.info("friend count:{}", friendSummaries.size());
