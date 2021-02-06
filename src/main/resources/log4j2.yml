@@ -1,0 +1,18 @@
+Configuration:
+  status: info
+  shutdownHook: disable
+  properties:
+    property:
+      name: stdoutPatternLayout
+      value: "%highlight{%d{HH:mm:ss.SSS} [%t] %-5level %c{1.} -- %method: %msg%n}"
+  appenders:
+    Console:
+      name: STDOUT
+      target: SYSTEM_OUT
+      PatternLayout:
+        Pattern: ${stdoutPatternLayout}
+  Loggers:
+    Root:
+      level: info
+      AppenderRef:
+        ref: STDOUT
