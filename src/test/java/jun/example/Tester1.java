@@ -1,5 +1,6 @@
 package jun.example;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jun.example.domain.PlayerSummary;
 import org.apache.logging.log4j.LogManager;

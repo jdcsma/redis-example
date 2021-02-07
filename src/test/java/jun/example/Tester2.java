@@ -1,6 +1,7 @@
 package jun.example;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jun.example.domain.PlayerSummary;
 import org.apache.logging.log4j.LogManager;
@@ -10,10 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -143,5 +141,33 @@ public class Tester2 {
         this.findFriends(1);
         this.findFriends(2);
         this.findFriends(3);
+    }
+
+    @Test
+    public void testHash() {
+        PlayerSummary summary = new PlayerSummary();
+        summary.setPlayerID(1981);
+        summary.setPlayerName("刘俊");
+        summary.setPlayerHead(1981);
+        summary.setPlayerPortrait(1981);
+
+        Map<String, String> map = this.objectMapper.convertValue(
+                summary, new TypeReference<Map<String, String>>() {
+                });
+
+        this.stringRedisTemplate.opsForHash().putAll(
+                this.summaryKey(summary.getPlayerID()), map);
+
+        Map<Object, Object> om = this.stringRedisTemplate.opsForHash()
+                .entries(this.summaryKey(summary.getPlayerID()));
+        logger.info(om);
+        summary.setPlayerHead(10);
+        this.stringRedisTemplate.opsForHash().put(
+                this.summaryKey(summary.getPlayerID()),
+                "playerHead",
+                Integer.toString(summary.getPlayerHead()));
+        om = this.stringRedisTemplate.opsForHash()
+                .entries(this.summaryKey(summary.getPlayerID()));
+        logger.info(om);
     }
 }
