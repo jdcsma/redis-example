@@ -8,15 +8,17 @@ import org.apache.logging.log4j.Logger;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @SpringBootTest
-public class Tester2 {
+public class Tester3 {
 
     private static final Logger logger = LogManager.getLogger();
 
@@ -42,7 +44,10 @@ public class Tester2 {
 
     public void addPlayerSummaries(int maxCount) {
 
-        List<PlayerSummary> summaryList = Stream.generate(
+        stringRedisTemplate.opsForValue().set(
+                "count:", Integer.toString(maxCount));
+
+        final List<PlayerSummary> summaryList = Stream.generate(
                 new Supplier<PlayerSummary>() {
                     long count = 1;
 
@@ -60,15 +65,19 @@ public class Tester2 {
 
         Elapse elapse = new Elapse();
         elapse.start();
-        summaryList.forEach(
-                (summary) -> {
-                    Map<String, String> map = this.objectMapper.convertValue(
-                            summary, new TypeReference<Map<String, String>>() {
-                            });
-                    stringRedisTemplate.opsForHash().putAll(
-                            this.summaryKey(summary.getPlayerID()), map);
-                }
-        );
+        this.stringRedisTemplate.executePipelined(
+                (RedisCallback<Object>) connection -> {
+                    summaryList.forEach(summary -> {
+                        Map<String, String> map = createMapFromObject(summary);
+                        final Map<byte[], byte[]> serialized = new HashMap<>();
+                        map.forEach((k, v) -> serialized.put(
+                                k.getBytes(StandardCharsets.UTF_8),
+                                v.getBytes(StandardCharsets.UTF_8)));
+                        connection.hMSet(summaryKey(summary.getPlayerID())
+                                .getBytes(StandardCharsets.UTF_8), serialized);
+                    });
+                    return null;
+                });
         elapse.stop();
         logger.info("add friend summaries elapse:{}. count:{}",
                 elapse.getAmount(), summaryList.size());
@@ -83,35 +92,33 @@ public class Tester2 {
         set.stream().map((id) -> Long.toString(id))
                 .collect(Collectors.toList()).toArray(ids);
 
-        long st = System.currentTimeMillis();
+        Elapse elapse = new Elapse();
+        elapse.start();
         this.stringRedisTemplate.opsForSet().add(this.friendKey(playerID), ids);
-        long et = System.currentTimeMillis();
-        logger.info("add friends elapse:{}", (et - st));
+        elapse.stop();
+        logger.info("add friends elapse:{}", elapse.getAmount());
     }
 
+    @SuppressWarnings("unchecked")
     public void findFriends(long playerID) {
-        long st = System.currentTimeMillis();
-        Set<String> members = this.stringRedisTemplate.opsForSet()
-                .members(this.friendKey(playerID));
-        long et = System.currentTimeMillis();
-        logger.info("player:{} - find friends id elapse:{}.",
-                playerID, (et - st));
-
-        assert members != null;
-
-        final List<PlayerSummary> friendSummaries = new ArrayList<>();
         final Elapse elapse = new Elapse();
         elapse.start();
-        members.forEach((friendID) -> {
-            Map<Object, Object> map = stringRedisTemplate.opsForHash()
-                    .entries(summaryKey(friendID));
-            PlayerSummary friend = objectMapper.convertValue(map, PlayerSummary.class);
-            assert friend != null;
-            friendSummaries.add(friend);
-        });
+        Set<String> keys = this.stringRedisTemplate.opsForSet()
+                .members(friendKey(playerID));
+        assert keys != null;
+        List<Object> results = this.stringRedisTemplate.executePipelined(
+                (RedisCallback<Object>) connection -> {
+                    keys.forEach(key -> {
+                        connection.hGetAll(summaryKey(key).getBytes(StandardCharsets.UTF_8));
+                    });
+                    return null;
+                });
+        List<PlayerSummary> friendSummaries =
+                results.stream().map(v -> createObjectFromMap((Map<Object, Object>) v))
+                        .collect(Collectors.toList());
         elapse.stop();
-        logger.info("player:{} - find all friend summary elapse:{} count:{}",
-                playerID, elapse.getAmount(), friendSummaries.size());
+        logger.info("find all friends elapse:{} count:{}",
+                elapse.getAmount(), friendSummaries.size());
     }
 
     @Test
@@ -125,5 +132,15 @@ public class Tester2 {
         this.findFriends(1);
         this.findFriends(2);
         this.findFriends(3);
+    }
+
+    private Map<String, String> createMapFromObject(PlayerSummary summary) {
+        return this.objectMapper.convertValue(summary,
+                new TypeReference<Map<String, String>>() {
+                });
+    }
+
+    private PlayerSummary createObjectFromMap(Map<Object, Object> map) {
+        return this.objectMapper.convertValue(map, PlayerSummary.class);
     }
 }

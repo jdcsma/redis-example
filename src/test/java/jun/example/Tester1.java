@@ -1,6 +1,5 @@
 package jun.example;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jun.example.domain.PlayerSummary;
 import org.apache.logging.log4j.LogManager;
@@ -38,8 +37,6 @@ public class Tester1 {
 
     public void addPlayerSummaries(int maxCount) {
 
-        objectRedisTemplate.opsForValue().set("count:", maxCount);
-
         List<PlayerSummary> summaryList = Stream.generate(
                 new Supplier<PlayerSummary>() {
                     long count = 1;
@@ -56,14 +53,15 @@ public class Tester1 {
                     }
                 }).limit(maxCount).collect(Collectors.toList());
 
-        long st = System.currentTimeMillis();
+        Elapse elapse = new Elapse();
+        elapse.start();
         summaryList.forEach(
                 (summary) -> objectRedisTemplate.opsForValue().set(
                         this.summaryKey(summary.getPlayerID()), summary)
         );
-        long et = System.currentTimeMillis();
-        logger.info("set string elapse:{}. count:{}",
-                (et - st), summaryList.size());
+        elapse.stop();
+        logger.info("add friend summaries elapse:{}. count:{}",
+                elapse.getAmount(), summaryList.size());
     }
 
     public void addFriends(long playerID, Set<Long> friends) {
@@ -91,30 +89,27 @@ public class Tester1 {
 
         List<PlayerSummary> friendSummaries = new ArrayList<>();
 
-        final Elapse getElapse = new Elapse();
-        final Elapse deserializeElapse = new Elapse();
+        final Elapse elapse = new Elapse();
         members.forEach((friendID) -> {
-            getElapse.start();
+            elapse.start();
             Map<String, Object> map = (Map<String, Object>)
                     objectRedisTemplate.opsForValue()
                             .get(summaryKey((Integer) friendID));
-            getElapse.stop();
-            deserializeElapse.start();
+            elapse.stop();
             PlayerSummary friend = objectMapper.convertValue(
                     map, PlayerSummary.class);
-            deserializeElapse.stop();
             assert friend != null;
             friendSummaries.add(friend);
         });
-        logger.info("player:{} - find friend summary elapse:{}",
-                playerID, (getElapse.getAmount() + deserializeElapse.getAmount()));
-        logger.info("get elapse:{}", getElapse.getAmount());
-        logger.info("deserialize elapse:{}", deserializeElapse.getAmount());
-        logger.info("friend count:{}", friendSummaries.size());
+        elapse.stop();
+        logger.info("player:{} - find all friend summary elapse:{} count:{}",
+                playerID, elapse.getAmount(), friendSummaries.size());
     }
 
     @Test
     public void doTest() {
+        Cleaner.deleteKeys(objectRedisTemplate, "summary:");
+        Cleaner.deleteKeys(objectRedisTemplate, "friend:");
         this.addPlayerSummaries(1000);
         this.addFriends(1, this.players);
         this.addFriends(2, this.players);
