@@ -3,10 +3,12 @@ package jun.example.config;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.connection.lettuce.LettuceConnection;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -33,19 +35,31 @@ public class SerializerConfig {
         return objectMapper;
     }
 
+    private LettuceConnectionFactory redisConnectionFactory;
+
+    private RedisConnectionFactory redisConnectionFactory() {
+        return this.redisConnectionFactory;
+    }
+
+    @Autowired
+    private void configureLettuceConnectionFactory(
+            LettuceConnectionFactory redisConnectionFactory) {
+        this.redisConnectionFactory = redisConnectionFactory;
+        redisConnectionFactory.setShareNativeConnection(false);
+        redisConnectionFactory.setPipeliningFlushPolicy(
+                LettuceConnection.PipeliningFlushPolicy.flushOnClose());
+    }
+
     @Bean
     @ConditionalOnMissingBean(name = "redisTemplate")
-    public RedisTemplate<String, Object> redisTemplate(
-            LettuceConnectionFactory redisConnectionFactory) {
-
-        redisConnectionFactory.setShareNativeConnection(false);
+    public RedisTemplate<String, Object> redisTemplate() {
 
         Jackson2JsonRedisSerializer<Object> jackson2JsonRedisSerializer
                 = new Jackson2JsonRedisSerializer<>(Object.class);
         jackson2JsonRedisSerializer.setObjectMapper(this.objectMapper());
 
         RedisTemplate<String, Object> template = new RedisTemplate<>();
-        template.setConnectionFactory(redisConnectionFactory);
+        template.setConnectionFactory(this.redisConnectionFactory());
         template.setKeySerializer(StringRedisSerializer.UTF_8);
         template.setValueSerializer(jackson2JsonRedisSerializer);
         template.setHashKeySerializer(StringRedisSerializer.UTF_8);
@@ -56,10 +70,9 @@ public class SerializerConfig {
 
     @Bean
     @ConditionalOnMissingBean(StringRedisTemplate.class)
-    public StringRedisTemplate stringRedisTemplate(
-            RedisConnectionFactory redisConnectionFactory) {
+    public StringRedisTemplate stringRedisTemplate() {
         StringRedisTemplate template = new StringRedisTemplate();
-        template.setConnectionFactory(redisConnectionFactory);
+        template.setConnectionFactory(this.redisConnectionFactory());
         return template;
     }
 }

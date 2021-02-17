@@ -59,7 +59,6 @@ public class Tester2 {
                 }).limit(maxCount).collect(Collectors.toList());
 
         Elapse elapse = new Elapse();
-        elapse.start();
         summaryList.forEach(
                 (summary) -> {
                     Map<String, String> map = this.objectMapper.convertValue(
@@ -71,7 +70,7 @@ public class Tester2 {
         );
         elapse.stop();
         logger.info("add friend summaries elapse:{}. count:{}",
-                elapse.getAmount(), summaryList.size());
+                elapse.stop(), summaryList.size());
     }
 
     public void addFriends(long playerID, Set<Long> friends) {
@@ -101,7 +100,6 @@ public class Tester2 {
 
         final List<PlayerSummary> friendSummaries = new ArrayList<>();
         final Elapse elapse = new Elapse();
-        elapse.start();
         members.forEach((friendID) -> {
             Map<Object, Object> map = stringRedisTemplate.opsForHash()
                     .entries(summaryKey(friendID));
@@ -111,7 +109,7 @@ public class Tester2 {
         });
         elapse.stop();
         logger.info("player:{} - find all friend summary elapse:{} count:{}",
-                playerID, elapse.getAmount(), friendSummaries.size());
+                playerID, elapse.stop(), friendSummaries.size());
     }
 
     @Test

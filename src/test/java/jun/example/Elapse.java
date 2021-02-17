@@ -2,18 +2,13 @@ package jun.example;
 
 public class Elapse {
 
-    private long begin;
-    private long amount;
+    private final long begin;
 
-    public void start() {
+    public Elapse() {
         this.begin = System.currentTimeMillis();
     }
 
-    public void stop() {
-        this.amount += System.currentTimeMillis() - this.begin;
-    }
-
-    public long getAmount() {
-        return this.amount;
+    public long stop() {
+        return System.currentTimeMillis() - this.begin;
     }
 }

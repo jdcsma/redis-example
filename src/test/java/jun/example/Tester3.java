@@ -64,7 +64,6 @@ public class Tester3 {
                 }).limit(maxCount).collect(Collectors.toList());
 
         Elapse elapse = new Elapse();
-        elapse.start();
         this.stringRedisTemplate.executePipelined(
                 (RedisCallback<Object>) connection -> {
                     summaryList.forEach(summary -> {
@@ -80,7 +79,7 @@ public class Tester3 {
                 });
         elapse.stop();
         logger.info("add friend summaries elapse:{}. count:{}",
-                elapse.getAmount(), summaryList.size());
+                elapse.stop(), summaryList.size());
     }
 
     public void addFriends(long playerID, Set<Long> friends) {
@@ -93,39 +92,38 @@ public class Tester3 {
                 .collect(Collectors.toList()).toArray(ids);
 
         Elapse elapse = new Elapse();
-        elapse.start();
         this.stringRedisTemplate.opsForSet().add(this.friendKey(playerID), ids);
         elapse.stop();
-        logger.info("add friends elapse:{}", elapse.getAmount());
+        logger.info("add friends elapse:{}", elapse.stop());
     }
 
     @SuppressWarnings("unchecked")
     public void findFriends(long playerID) {
         final Elapse elapse = new Elapse();
-        elapse.start();
         Set<String> keys = this.stringRedisTemplate.opsForSet()
                 .members(friendKey(playerID));
         assert keys != null;
         List<Object> results = this.stringRedisTemplate.executePipelined(
                 (RedisCallback<Object>) connection -> {
-                    keys.forEach(key -> {
-                        connection.hGetAll(summaryKey(key).getBytes(StandardCharsets.UTF_8));
-                    });
+                    keys.forEach(key -> connection.hGetAll(summaryKey(key)
+                            .getBytes(StandardCharsets.UTF_8)));
                     return null;
                 });
         List<PlayerSummary> friendSummaries =
-                results.stream().map(v -> createObjectFromMap((Map<Object, Object>) v))
+                results.stream()
+                        .filter(v -> ((Map<Object, Object>) v).size() > 0)
+                        .map(v -> createObjectFromMap((Map<Object, Object>) v))
                         .collect(Collectors.toList());
         elapse.stop();
         logger.info("find all friends elapse:{} count:{}",
-                elapse.getAmount(), friendSummaries.size());
+                elapse.stop(), friendSummaries.size());
     }
 
     @Test
     public void doTest() {
         Cleaner.deleteKeys(stringRedisTemplate, "summary:");
         Cleaner.deleteKeys(stringRedisTemplate, "friend:");
-        this.addPlayerSummaries(1000);
+        this.addPlayerSummaries(10);
         this.addFriends(1, this.players);
         this.addFriends(2, this.players);
         this.addFriends(3, this.players);

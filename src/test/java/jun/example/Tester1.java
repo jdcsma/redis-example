@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.RedisTemplate;
 
+import java.nio.charset.Charset;
 import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -54,14 +55,13 @@ public class Tester1 {
                 }).limit(maxCount).collect(Collectors.toList());
 
         Elapse elapse = new Elapse();
-        elapse.start();
         summaryList.forEach(
                 (summary) -> objectRedisTemplate.opsForValue().set(
                         this.summaryKey(summary.getPlayerID()), summary)
         );
         elapse.stop();
         logger.info("add friend summaries elapse:{}. count:{}",
-                elapse.getAmount(), summaryList.size());
+                elapse.stop(), summaryList.size());
     }
 
     public void addFriends(long playerID, Set<Long> friends) {
@@ -91,19 +91,16 @@ public class Tester1 {
 
         final Elapse elapse = new Elapse();
         members.forEach((friendID) -> {
-            elapse.start();
             Map<String, Object> map = (Map<String, Object>)
                     objectRedisTemplate.opsForValue()
                             .get(summaryKey((Integer) friendID));
-            elapse.stop();
             PlayerSummary friend = objectMapper.convertValue(
                     map, PlayerSummary.class);
             assert friend != null;
             friendSummaries.add(friend);
         });
-        elapse.stop();
         logger.info("player:{} - find all friend summary elapse:{} count:{}",
-                playerID, elapse.getAmount(), friendSummaries.size());
+                playerID, elapse.stop(), friendSummaries.size());
     }
 
     @Test
