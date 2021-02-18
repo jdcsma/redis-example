@@ -45,9 +45,9 @@ public class SerializerConfig {
     private void configureLettuceConnectionFactory(
             LettuceConnectionFactory redisConnectionFactory) {
         this.redisConnectionFactory = redisConnectionFactory;
-        redisConnectionFactory.setShareNativeConnection(false);
-        redisConnectionFactory.setPipeliningFlushPolicy(
-                LettuceConnection.PipeliningFlushPolicy.flushOnClose());
+//        redisConnectionFactory.setShareNativeConnection(false);
+//        redisConnectionFactory.setPipeliningFlushPolicy(
+//                LettuceConnection.PipeliningFlushPolicy.flushOnClose());
     }
 
     @Bean

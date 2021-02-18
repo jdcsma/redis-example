@@ -8,8 +8,8 @@ spring:
   profiles:
     active: default
   redis:
-    host: 127.0.0.1
-    port: 6379
+    host: 10.0.0.135
+    port: 6380
     password: root
     database: 0
     lettuce:

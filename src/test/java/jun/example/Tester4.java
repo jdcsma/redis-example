@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jun.example.domain.Notification;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.core.util.UuidUtil;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -28,7 +27,7 @@ public class Tester4 {
     private static final Logger logger = LogManager.getLogger();
 
     public final String KEY_FORMAT = "inform:%d";
-    public final int MAX_RANGE = 30;
+    public final int MAX_RANGE = 1000;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -37,10 +36,26 @@ public class Tester4 {
     private StringRedisTemplate stringRedisTemplate;
 
     public void addNotifications(long receiverID, List<Notification> notifications) {
-        this.listOps().rightPushAll(this.key(receiverID),
-                notifications.stream().map(this::convertToString)
-                        .filter(Objects::nonNull)
-                        .collect(Collectors.toList()));
+//        this.listOps().rightPushAll(this.key(receiverID),
+//                notifications.stream().map(this::convertToString)
+//                        .filter(Objects::nonNull)
+//                        .collect(Collectors.toList()));
+        final byte[] key = toByteArray(this.key(receiverID));
+        final List<byte[]> strings = notifications.stream()
+                .map(this::convertToString)
+                .filter(Objects::nonNull)
+                .map(Tester4::toByteArray)
+                .collect(Collectors.toList());
+
+        Elapse elapse = new Elapse();
+        this.redis().executePipelined(
+                (RedisCallback<Object>) connection -> {
+                    strings.forEach((value) -> {
+                        connection.rPush(key, value);
+                    });
+                    return null;
+                });
+        logger.info("push count:{} elapse:{}", strings.size(), elapse.stop());
     }
 
     @SuppressWarnings("unchecked")
@@ -53,16 +68,16 @@ public class Tester4 {
 
         final byte[] key = toByteArray(this.key(receiverID));
 
+        Elapse elapse = new Elapse();
         List<Object> results = this.redis().executePipelined(
                 (RedisCallback<Object>) connection -> {
                     connection.lRange(key, 0, MAX_RANGE - 1);
                     connection.lTrim(key, MAX_RANGE, -1);
                     return null;
                 });
-
-        logger.debug("result:{}", results);
-
         List<String> values = (List<String>) results.get(0);
+        logger.info("retrieve count:{} elapse:{}",
+                values.size(), elapse.stop());
 
         return values.stream().map(this::convertToObject)
                 .filter(Objects::nonNull).collect(Collectors.toList());
@@ -109,7 +124,7 @@ public class Tester4 {
     @Test
     public void doTest() {
 
-        StringBuffer sb = new StringBuffer();
+        StringBuilder sb = new StringBuilder();
         for (int i = 0; i < 10; ++i) {
             sb.append(UUID.randomUUID().toString());
         }
@@ -127,7 +142,10 @@ public class Tester4 {
                     }
                 }).limit(1000).collect(Collectors.toList());
         try {
+            Elapse elapse = new Elapse();
             addNotifications(1, notifications);
+            logger.info("add count:{} elapse:{}", notifications.size(), elapse.stop());
+
         } catch (Exception cause) {
             logger.error("caught exception.", cause);
         }
@@ -136,7 +154,8 @@ public class Tester4 {
             while (true) {
                 Elapse elapse = new Elapse();
                 List<Notification> receivedNotifications = retrieveNotifications(1);
-                logger.info("count:{} elapse:{}", receivedNotifications.size(), elapse.stop());
+                logger.info("receive count:{} elapse:{}",
+                        notifications.size(), elapse.stop());
                 if (receivedNotifications.isEmpty()) {
                     break;
                 }
